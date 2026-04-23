@@ -210,6 +210,7 @@
   let isPaused    = false;
   let seconds     = 0;
   let timerInterval = null;
+  let finalText   = '';
   let history     = JSON.parse(localStorage.getItem('transcriptions') || '[]');
 
   // ── Web Speech API ──────────────────────────────────────────
@@ -221,8 +222,6 @@
     r.continuous = true;
     r.interimResults = true;
     r.maxAlternatives = 1;
-
-    let finalText = '';
 
     r.onresult = (e) => {
       let interim = '';
@@ -349,6 +348,7 @@
   function clearTranscript() {
     if (!confirm('Effacer la transcription en cours ?')) return;
     transcript.innerHTML = '';
+    finalText = '';
     wordCount.textContent = '0';
     seconds = 0;
     timerEl.textContent = '00:00';

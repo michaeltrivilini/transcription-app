@@ -1,0 +1,19 @@
+{
+  "name": "Transcription vocale",
+  "short_name": "Transcription",
+  "description": "Transcription vocale en temps réel avec sauvegarde .txt",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f0f2f5",
+  "theme_color": "#1F497D",
+  "orientation": "portrait",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

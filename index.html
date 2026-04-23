@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="theme-color" content="#1F497D" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Transcription" />
+  <title>Transcription vocale</title>
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: #1F497D;
+      color: white;
+      padding: 48px 20px 18px;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { font-size: 20px; font-weight: 600; }
+    header p  { font-size: 13px; opacity: 0.75; margin-top: 3px; }
+
+    main { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 14px; max-width: 600px; width: 100%; margin: 0 auto; }
+
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 14px 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    /* Statut */
+    .status-row { display: flex; align-items: center; gap: 10px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #ccc; flex-shrink: 0; transition: background 0.3s; }
+    .dot.recording { background: #E24B4A; animation: blink 1s infinite; }
+    .dot.paused    { background: #EF9F27; }
+    .dot.stopped   { background: #1D9E75; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.35} }
+    #status-text { font-size: 14px; color: #444; }
+    #timer { margin-left: auto; font-size: 18px; font-weight: 600; color: #1F497D; letter-spacing: 2px; font-variant-numeric: tabular-nums; }
+
+    /* Zone de transcription */
+    #transcript {
+      width: 100%;
+      min-height: 220px;
+      max-height: 42vh;
+      overflow-y: auto;
+      border: none;
+      outline: none;
+      font-size: 15px;
+      line-height: 1.7;
+      color: #222;
+      resize: none;
+      background: transparent;
+    }
+    #transcript:empty::before {
+      content: "Appuie sur Démarrer pour commencer la transcription...";
+      color: #aaa;
+      font-style: italic;
+    }
+    .word-count { font-size: 12px; color: #999; margin-top: 8px; text-align: right; }
+
+    /* Boutons */
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn {
+      padding: 14px 10px;
+      border-radius: 12px;
+      border: none;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .btn:active { transform: scale(0.97); opacity: 0.85; }
+    .btn:disabled { opacity: 0.35; cursor: default; }
+    .btn-start   { background: #1D9E75; color: white; }
+    .btn-pause   { background: #EF9F27; color: white; }
+    .btn-stop    { background: #E24B4A; color: white; }
+    .btn-save    { background: #1F497D; color: white; }
+    .btn-clear   { background: #f0f2f5; color: #555; }
+    .btn-new     { background: #f0f2f5; color: #555; }
+    .btn-full    { grid-column: 1 / -1; }
+
+    /* Historique */
+    .section-title { font-size: 13px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+    .history-empty { font-size: 14px; color: #bbb; font-style: italic; text-align: center; padding: 12px 0; }
+    .history-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 0.5px solid #f0f0f0;
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-name { font-size: 14px; font-weight: 500; color: #222; }
+    .history-meta { font-size: 12px; color: #999; margin-top: 2px; }
+    .btn-dl {
+      background: #e8f0f8; color: #1F497D; border: none;
+      border-radius: 8px; padding: 7px 12px;
+      font-size: 13px; font-weight: 500; cursor: pointer;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .btn-dl:active { opacity: 0.7; }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: #222; color: white; padding: 12px 20px; border-radius: 24px;
+      font-size: 14px; transition: transform 0.3s ease; z-index: 999; white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* Bannière install */
+    #install-banner {
+      display: none;
+      background: #e8f4ee;
+      border-left: 4px solid #1D9E75;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 14px;
+      color: #1a5c3a;
+      align-items: center;
+      gap: 10px;
+    }
+    #install-banner.visible { display: flex; }
+    #install-banner button {
+      margin-left: auto; background: #1D9E75; color: white;
+      border: none; border-radius: 8px; padding: 7px 14px;
+      font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Transcription vocale</h1>
+  <p>Enregistrement & sauvegarde .txt</p>
+</header>
+
+<main>
+
+  <!-- Bannière installation PWA -->
+  <div id="install-banner">
+    <span>Installe l'app sur ton écran d'accueil !</span>
+    <button id="btn-install">Installer</button>
+  </div>
+
+  <!-- Statut & timer -->
+  <div class="card">
+    <div class="status-row">
+      <div class="dot" id="dot"></div>
+      <span id="status-text">Prêt à enregistrer</span>
+      <span id="timer">00:00</span>
+    </div>
+  </div>
+
+  <!-- Transcription -->
+  <div class="card" style="flex:1;">
+    <div id="transcript" contenteditable="true" spellcheck="false"></div>
+    <div class="word-count"><span id="word-count">0</span> mots</div>
+  </div>
+
+  <!-- Boutons principaux -->
+  <div class="btn-grid">
+    <button class="btn btn-start" id="btn-start">▶ Démarrer</button>
+    <button class="btn btn-pause" id="btn-pause" disabled>⏸ Pause</button>
+    <button class="btn btn-save btn-full" id="btn-save" disabled>💾 Sauvegarder en .txt</button>
+    <button class="btn btn-clear" id="btn-clear">🗑 Effacer</button>
+    <button class="btn btn-new"   id="btn-new">+ Nouveau</button>
+  </div>
+
+  <!-- Historique -->
+  <div class="card">
+    <div class="section-title">Fichiers sauvegardés</div>
+    <div id="history-list"><div class="history-empty">Aucune transcription sauvegardée</div></div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+  const btnStart  = document.getElementById('btn-start');
+  const btnPause  = document.getElementById('btn-pause');
+  const btnSave   = document.getElementById('btn-save');
+  const btnClear  = document.getElementById('btn-clear');
+  const btnNew    = document.getElementById('btn-new');
+  const dot       = document.getElementById('dot');
+  const statusTxt = document.getElementById('status-text');
+  const timerEl   = document.getElementById('timer');
+  const transcript= document.getElementById('transcript');
+  const wordCount = document.getElementById('word-count');
+  const histList  = document.getElementById('history-list');
+  const toast     = document.getElementById('toast');
+
+  let recognition = null;
+  let isRecording = false;
+  let isPaused    = false;
+  let seconds     = 0;
+  let timerInterval = null;
+  let history     = JSON.parse(localStorage.getItem('transcriptions') || '[]');
+
+  // ── Web Speech API ──────────────────────────────────────────
+  function initRecognition() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { showToast('Navigateur non supporté — utilise Chrome'); return null; }
+    const r = new SR();
+    r.lang = 'fr-FR';
+    r.continuous = true;
+    r.interimResults = true;
+    r.maxAlternatives = 1;
+
+    let finalText = '';
+
+    r.onresult = (e) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) { finalText += t + ' '; }
+        else { interim = t; }
+      }
+      transcript.innerHTML =
+        '<span style="color:#222">' + finalText + '</span>' +
+        '<span style="color:#aaa">' + interim + '</span>';
+      updateWordCount();
+      transcript.scrollTop = transcript.scrollHeight;
+    };
+
+    r.onerror = (e) => {
+      if (e.error === 'no-speech') return;
+      showToast('Erreur micro : ' + e.error);
+      stopRecording();
+    };
+
+    r.onend = () => {
+      if (isRecording && !isPaused) {
+        try { r.start(); } catch(e) {}
+      }
+    };
+    return r;
+  }
+
+  // ── Timer ───────────────────────────────────────────────────
+  function startTimer() {
+    timerInterval = setInterval(() => {
+      seconds++;
+      const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+      const s = String(seconds % 60).padStart(2, '0');
+      timerEl.textContent = m + ':' + s;
+    }, 1000);
+  }
+  function stopTimer() { clearInterval(timerInterval); }
+
+  // ── Compteur de mots ────────────────────────────────────────
+  function updateWordCount() {
+    const text = transcript.innerText.trim();
+    const count = text ? text.split(/\s+/).length : 0;
+    wordCount.textContent = count;
+  }
+
+  // ── Contrôles ───────────────────────────────────────────────
+  function startRecording() {
+    recognition = initRecognition();
+    if (!recognition) return;
+    try {
+      recognition.start();
+      isRecording = true; isPaused = false;
+      startTimer();
+      dot.className = 'dot recording';
+      statusTxt.textContent = 'Enregistrement en cours...';
+      btnStart.disabled = true;
+      btnPause.disabled = false;
+      btnSave.disabled  = false;
+    } catch(e) { showToast('Impossible de démarrer : ' + e.message); }
+  }
+
+  function pauseRecording() {
+    if (!isPaused) {
+      recognition.stop();
+      isPaused = true;
+      stopTimer();
+      dot.className = 'dot paused';
+      statusTxt.textContent = 'En pause';
+      btnPause.textContent = '▶ Reprendre';
+    } else {
+      recognition.start();
+      isPaused = false;
+      startTimer();
+      dot.className = 'dot recording';
+      statusTxt.textContent = 'Enregistrement en cours...';
+      btnPause.textContent = '⏸ Pause';
+    }
+  }
+
+  function stopRecording() {
+    if (recognition) { try { recognition.stop(); } catch(e){} }
+    isRecording = false; isPaused = false;
+    stopTimer();
+    dot.className = 'dot stopped';
+    statusTxt.textContent = 'Terminé';
+    btnStart.disabled = false;
+    btnPause.disabled = true;
+    btnPause.textContent = '⏸ Pause';
+  }
+
+  // ── Sauvegarde ──────────────────────────────────────────────
+  function saveTranscription() {
+    const text = transcript.innerText.trim();
+    if (!text) { showToast('Rien à sauvegarder !'); return; }
+
+    const now   = new Date();
+    const stamp = now.toISOString().slice(0,19).replace('T','_').replace(/:/g,'-');
+    const fname = 'transcription_' + stamp + '.txt';
+
+    // Téléchargement
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = fname; a.click();
+    URL.revokeObjectURL(url);
+
+    // Historique local
+    const entry = {
+      name: fname,
+      date: now.toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }),
+      words: text.split(/\s+/).length,
+      text: text,
+    };
+    history.unshift(entry);
+    if (history.length > 20) history.pop();
+    localStorage.setItem('transcriptions', JSON.stringify(history));
+    renderHistory();
+    showToast('Fichier sauvegardé !');
+    stopRecording();
+  }
+
+  function clearTranscript() {
+    if (!confirm('Effacer la transcription en cours ?')) return;
+    transcript.innerHTML = '';
+    wordCount.textContent = '0';
+    seconds = 0;
+    timerEl.textContent = '00:00';
+    stopRecording();
+    dot.className = 'dot';
+    statusTxt.textContent = 'Prêt à enregistrer';
+    btnSave.disabled = true;
+  }
+
+  function newTranscript() {
+    if (transcript.innerText.trim() && !confirm('Démarrer une nouvelle transcription ? (la courante sera perdue si non sauvegardée)')) return;
+    clearTranscript();
+    startRecording();
+  }
+
+  // ── Historique ──────────────────────────────────────────────
+  function renderHistory() {
+    if (!history.length) {
+      histList.innerHTML = '<div class="history-empty">Aucune transcription sauvegardée</div>';
+      return;
+    }
+    histList.innerHTML = history.map((e, i) => `
+      <div class="history-item">
+        <div>
+          <div class="history-name">${e.name}</div>
+          <div class="history-meta">${e.date} · ${e.words} mots</div>
+        </div>
+        <button class="btn-dl" onclick="redownload(${i})">Télécharger</button>
+      </div>
+    `).join('');
+  }
+
+  window.redownload = function(i) {
+    const e = history[i];
+    const blob = new Blob([e.text], { type: 'text/plain;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = e.name; a.click();
+    URL.revokeObjectURL(url);
+    showToast('Re-téléchargement lancé');
+  };
+
+  // ── Toast ───────────────────────────────────────────────────
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2500);
+  }
+
+  // ── PWA install ─────────────────────────────────────────────
+  let deferredPrompt;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    document.getElementById('install-banner').classList.add('visible');
+  });
+  document.getElementById('btn-install').addEventListener('click', () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(() => {
+        document.getElementById('install-banner').classList.remove('visible');
+        deferredPrompt = null;
+      });
+    }
+  });
+
+  // ── Service Worker ──────────────────────────────────────────
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
+  // ── Events ──────────────────────────────────────────────────
+  btnStart.addEventListener('click', startRecording);
+  btnPause.addEventListener('click', pauseRecording);
+  btnSave.addEventListener ('click', saveTranscription);
+  btnClear.addEventListener('click', clearTranscript);
+  btnNew.addEventListener  ('click', newTranscript);
+  transcript.addEventListener('input', updateWordCount);
+
+  renderHistory();
+</script>
+</body>
+</html>

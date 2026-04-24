@@ -211,6 +211,7 @@
   let seconds     = 0;
   let timerInterval = null;
   let finalText   = '';
+  let lastResultIndex = 0;
   let history     = JSON.parse(localStorage.getItem('transcriptions') || '[]');
 
   // ── Web Speech API ──────────────────────────────────────────
@@ -225,10 +226,14 @@
 
     r.onresult = (e) => {
       let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      for (let i = lastResultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) { finalText += t + ' '; }
-        else { interim = t; }
+        if (e.results[i].isFinal) {
+          finalText += t + ' ';
+          lastResultIndex = i + 1;
+        } else {
+          interim = t;
+        }
       }
       transcript.innerHTML =
         '<span style="color:#222">' + finalText + '</span>' +
@@ -245,7 +250,12 @@
 
     r.onend = () => {
       if (isRecording && !isPaused) {
-        try { r.start(); } catch(e) {}
+        // Petit délai pour éviter les conflits de redémarrage
+        setTimeout(() => {
+          if (isRecording && !isPaused) {
+            try { r.start(); } catch(e) {}
+          }
+        }, 100);
       }
     };
     return r;
@@ -273,6 +283,7 @@
   function startRecording() {
     recognition = initRecognition();
     if (!recognition) return;
+    lastResultIndex = 0;
     try {
       recognition.start();
       isRecording = true; isPaused = false;
@@ -349,6 +360,7 @@
     if (!confirm('Effacer la transcription en cours ?')) return;
     transcript.innerHTML = '';
     finalText = '';
+    lastResultIndex = 0;
     wordCount.textContent = '0';
     seconds = 0;
     timerEl.textContent = '00:00';

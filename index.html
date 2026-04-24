@@ -215,22 +215,26 @@
   let history     = JSON.parse(localStorage.getItem('transcriptions') || '[]');
 
   // ── Web Speech API ──────────────────────────────────────────
-  function initRecognition() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { showToast('Navigateur non supporté — utilise Chrome'); return null; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  function createAndStart() {
+    if (!isRecording || isPaused) return;
+
+    // Nouvelle instance propre à chaque session — jamais de r.start() sur une instance existante
     const r = new SR();
+    recognition = r;
     r.lang = 'fr-FR';
-    r.continuous = true;
+    r.continuous = false;     // false = une session propre, pas de replay interne
     r.interimResults = true;
     r.maxAlternatives = 1;
 
     r.onresult = (e) => {
       let interim = '';
-      for (let i = lastResultIndex; i < e.results.length; i++) {
+      for (let i = 0; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
         if (e.results[i].isFinal) {
           finalText += t + ' ';
-          lastResultIndex = i + 1;
+          interim = '';
         } else {
           interim = t;
         }
@@ -243,22 +247,24 @@
     };
 
     r.onerror = (e) => {
-      if (e.error === 'no-speech') return;
+      if (e.error === 'no-speech' || e.error === 'aborted') return;
       showToast('Erreur micro : ' + e.error);
       stopRecording();
     };
 
     r.onend = () => {
+      // Session terminée naturellement — on recrée une instance propre
       if (isRecording && !isPaused) {
-        // Petit délai pour éviter les conflits de redémarrage
-        setTimeout(() => {
-          if (isRecording && !isPaused) {
-            try { r.start(); } catch(e) {}
-          }
-        }, 100);
+        createAndStart();
       }
     };
-    return r;
+
+    try { r.start(); } catch(e) {}
+  }
+
+  function initRecognition() {
+    if (!SR) { showToast('Navigateur non supporté — utilise Chrome'); return false; }
+    return true;
   }
 
   // ── Timer ───────────────────────────────────────────────────
@@ -281,36 +287,35 @@
 
   // ── Contrôles ───────────────────────────────────────────────
   function startRecording() {
-    recognition = initRecognition();
-    if (!recognition) return;
+    if (!SR) { showToast('Navigateur non supporté — utilise Chrome'); return; }
+    finalText = '';
     lastResultIndex = 0;
-    try {
-      recognition.start();
-      isRecording = true; isPaused = false;
-      startTimer();
-      dot.className = 'dot recording';
-      statusTxt.textContent = 'Enregistrement en cours...';
-      btnStart.disabled = true;
-      btnPause.disabled = false;
-      btnSave.disabled  = false;
-    } catch(e) { showToast('Impossible de démarrer : ' + e.message); }
+    isRecording = true;
+    isPaused = false;
+    startTimer();
+    dot.className = 'dot recording';
+    statusTxt.textContent = 'Enregistrement en cours...';
+    btnStart.disabled = true;
+    btnPause.disabled = false;
+    btnSave.disabled  = false;
+    createAndStart();
   }
 
   function pauseRecording() {
     if (!isPaused) {
-      recognition.stop();
+      if (recognition) { try { recognition.stop(); } catch(e){} }
       isPaused = true;
       stopTimer();
       dot.className = 'dot paused';
       statusTxt.textContent = 'En pause';
       btnPause.textContent = '▶ Reprendre';
     } else {
-      recognition.start();
       isPaused = false;
       startTimer();
       dot.className = 'dot recording';
       statusTxt.textContent = 'Enregistrement en cours...';
       btnPause.textContent = '⏸ Pause';
+      createAndStart();
     }
   }
 
